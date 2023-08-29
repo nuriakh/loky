@@ -1,12 +1,16 @@
 import express from 'express'
-import jwt from 'jsonwebtoken'
-import bcrypt from 'bcrypt'
+
 import mongoose from 'mongoose'
-import { validationResult } from 'express-validator'
-import { registerValidation } from './validation/auth.js'
-import UserModel from './models/User.js'
-import checkAuth from './utils/checkAuth.js'
-import * as UserController from './controllers/User.Controller.js'
+
+import {
+  registerValidation,
+  loginValidation,
+  postCreateValidation,
+} from './validation.js'
+
+import { checkAuth, handleValidationErrors } from './utils/index.js'
+import { UserController, PostController } from './controllers/index.js'
+import multer from 'multer'
 
 mongoose
   .connect(
@@ -17,11 +21,58 @@ mongoose
 
 const app = express() //создаем апку
 
-app.use(express.json()) // чтоб express понимал json
+const storage = multer.diskStorage({
+  destination: (_, __, cb) => {
+    cb(null, 'uploads')
+  },
+  filename: (_, file, cb) => {
+    cb(null, file.originalname)
+  },
+})
 
-app.post('/auth/login', UserController.login)
-app.post('/auth/register', registerValidation, UserController.register)
-//app.get('/auth/me', checkAuth, UserController.getMe)
+const upload = multer({ storage })
+
+app.use(express.json()) // чтоб express понимал json
+app.use('/uploads', express.static('uploads')) //чтоб express понимал что есть спец папка, где хранятся статчные файлы
+
+app.post(
+  '/auth/login',
+  loginValidation,
+  handleValidationErrors,
+  UserController.login,
+)
+app.post(
+  '/auth/register',
+  registerValidation,
+  handleValidationErrors,
+  UserController.register,
+)
+app.get('/auth/me', checkAuth, UserController.getMe)
+
+app.post('/upload', checkAuth, upload.single('image'), (req, res) => {
+  res.json({
+    // Вернуть URL, по которому можно получить доступ к загруженному файлу
+    url: `/uploads/${req.file.originalname}`,
+  })
+})
+
+app.get('/posts', PostController.getAll)
+app.get('/posts/:id', PostController.getOne)
+app.post(
+  '/posts',
+  checkAuth,
+  postCreateValidation,
+  handleValidationErrors,
+  PostController.create,
+)
+app.delete('/posts/:id', checkAuth, PostController.remove)
+app.patch(
+  '/posts/:id',
+  checkAuth,
+  postCreateValidation,
+  handleValidationErrors,
+  PostController.update,
+)
 
 app.listen(4444, (err) => {
   // слушай порт
